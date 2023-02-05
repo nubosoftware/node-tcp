@@ -57,8 +57,7 @@ export class NetConn extends EventEmitter {
 
         const errorHandler = (err: Error | any) => {
             if (NetConn.DEBUG) nc.log(`Error on socket`, err);
-            nc._err = err;
-            //nc.emit('error', err);
+            nc._err = err;           
         };
 
         const closeHandler = () => {
@@ -73,7 +72,7 @@ export class NetConn extends EventEmitter {
             try {
                 nc.socket.destroy(new Error("Socket timeout"));
             } catch (err) {
-
+                // ignore
             }
         }
 
@@ -86,7 +85,7 @@ export class NetConn extends EventEmitter {
      * Log message with this connection's tag
      * @param msg 
      */
-    log(msg: string,err: Error | any = undefined) {
+    log(msg: string,err?: Error | any) {
         if(this.logger) {
             this.logger.info(`${this.TAG}: ${msg}`,err);
         } else {
@@ -143,11 +142,11 @@ export class NetConn extends EventEmitter {
      */
     readBuffer(size?: number | undefined): Promise<Buffer> {
         const nc = this;
-        let debug = NetConn.DEBUG;
+        const debug = NetConn.DEBUG;
         
         if (debug) this.log(`readBuffer. size: ${size}`);
         
-        let stream = this.socket;
+        const stream = this.socket;
         return new Promise((resolve, reject) => {
             if (nc._err) {
                 reject(nc._err);
@@ -157,7 +156,7 @@ export class NetConn extends EventEmitter {
             const readableHandler = () => {
                 if (debug) this.log(`readBuffer. readableHandler`);                
                 try {
-                    let chunk = stream.read(size);                    
+                    const chunk = stream.read(size);                    
                     if (chunk) {
                         const chunkSize = chunk.length;
                         if (debug) this.log(`readBuffer. resolve: ${chunkSize}`);
@@ -359,7 +358,7 @@ export class NetConn extends EventEmitter {
      */
     async readBoolean(): Promise<boolean> {
         const b = await this.readByte();
-        if (b != 0) {
+        if (b !== 0) {
             return true;
         } else {
             return false
@@ -388,11 +387,9 @@ export class NetConn extends EventEmitter {
      * Read UTF string
      * @returns {string}
      */
-    async readUTF(): Promise<string> {
-        //if (this.DEBUG) this.log(`readUTF.`);
+    async readUTF(): Promise<string> {        
         const chunk = await this.readBuffer(2);
-        const strlen = chunk.readInt16BE();
-        //if (this.DEBUG) this.log(`readUTF. strlen: ${strlen}`);
+        const strlen = chunk.readInt16BE();        
         if (strlen > 0) {
             const chunk2 = await this.readBuffer(strlen);
             const text = chunk2.toString('utf8');
@@ -406,10 +403,8 @@ export class NetConn extends EventEmitter {
      * Read UTF string or null
      * @returns {string | null}
      */
-    async readString(): Promise<string | null> {
-        //if (this.DEBUG) this.log("readString. reading boolean");
-        const isNull = await this.readBoolean();
-        //if (this.DEBUG) this.log(`readString. isNull: ${isNull}`);
+    async readString(): Promise<string | null> {        
+        const isNull = await this.readBoolean();       
         let text = null;
         if (!isNull) {
             text = await this.readUTF();
@@ -456,8 +451,7 @@ export class NetConn extends EventEmitter {
      */
     async writeInt(num: number): Promise<void> {
         const b = Buffer.alloc(4);
-        b.writeInt32BE(num);
-        //console.log(`${this.TAG}. writeInt: ${num}`);
+        b.writeInt32BE(num);        
         await this.writeBuffer(b);
     }
 
@@ -477,14 +471,12 @@ export class NetConn extends EventEmitter {
      * @param {string} str
      */
     async writeString(str: string | null): Promise<void> {
-            if (!str) {
-                //this.log("Write null string..");
+            if (!str) {                
                 await this.writeBoolean(true);
                 return;
             }
             const strbuf = Buffer.from(str, 'utf8');
-            let b = Buffer.alloc(3);
-            //this.log(`Write string of size: ${strbuf.length}`);
+            const b = Buffer.alloc(3);            
             b.writeInt8(0)
             b.writeInt16BE(strbuf.length, 1);
             await this.writeBuffer(b);
@@ -508,8 +500,7 @@ export class NetConn extends EventEmitter {
      */
     async writeLong(num: bigint): Promise<void> {
         const b = Buffer.alloc(8);
-        b.writeBigInt64BE(num);
-        //console.log(`${this.TAG}. writeInt: ${num}`);
+        b.writeBigInt64BE(num);        
         await this.writeBuffer(b);
     }
 }

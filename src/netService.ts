@@ -53,7 +53,7 @@ export class NetService {
 
         const cs = this;
 
-        if (this.serverType == "tcp") {
+        if (this.serverType === "tcp") {
             this.server.on('connection', (socket) => {
                 cs.onConnection(socket);
             });
@@ -70,7 +70,7 @@ export class NetService {
         });
 
         this.server.on('listening', () => {
-            let addr = this.server.address();
+            const addr = this.server.address();
             if (addr && typeof addr !== "string") {
                 this.port = addr.port;
                 this.TAG = `${this.serviceName}_${this.serverType}_${this.port}`;
@@ -161,6 +161,7 @@ export class NetService {
 }
 
 export type NetConnClass = {
+    // tslint:disable-next-line     
     new(socket: net.Socket, server?: any, options?: any, logger?: Logger): NetConn   
 }
 
