@@ -22,7 +22,9 @@ export class NetService {
     static DEBUG = false;
 
     
-    private waitPromise?: WaitPromise;
+    private listenPromise?: WaitPromise;
+    private acceptPromise?: AcceptPromise;
+    private acceptWaitingList: NetConn[] = [];
 
     /**
      * Create a new NetService
@@ -32,11 +34,14 @@ export class NetService {
      * @param options optional options for the NetConn
      * @param logger optional logger
      */
-    constructor(port: number, connClass:NetConnClass, tlsOptions?: tls.TlsOptions,options?:any,logger?:Logger) {
+    constructor(port: number, connClass?:NetConnClass, tlsOptions?: tls.TlsOptions,options?:any,logger?:Logger) {
         this.port = port;       
         this.tlsOptions = tlsOptions;
         this.options = options;
         this.logger = logger;
+        if (!connClass) {
+            connClass = NetConn;
+        }
         this.connClass = connClass;       
         this.serviceName = `${connClass.name}Service`;
         if (tlsOptions) {            
@@ -77,9 +82,9 @@ export class NetService {
             }            
             if (NetService.DEBUG) this.log(`Listening. port: ${this.port}. serverType: ${this.serverType}`);
             
-            if (this.waitPromise) {
-                this.waitPromise.resolve();
-                this.waitPromise = undefined;
+            if (this.listenPromise) {
+                this.listenPromise.resolve();
+                this.listenPromise = undefined;
             }
         });
 
@@ -94,7 +99,11 @@ export class NetService {
         if (this.logger) {
             this.logger.info(`${this.TAG}: ${msg}`,err);
         } else {
-            console.log(`${this.TAG}: ${msg}`,err);
+            if (err) {
+                console.log(`${this.TAG}: ${msg}`,err);
+            } else {
+                console.log(`${this.TAG}: ${msg}`);
+            }
         }
     }
 
@@ -102,11 +111,16 @@ export class NetService {
      * Listen for connections
      * @returns A promise that resolves when the server is listening
      */
-    listen(): Promise<void> {
+    listen(options?: net.ListenOptions): Promise<void> {
         const ns = this;
-        this.server.listen(this.port);
-        return new Promise((resolve, reject) => {
-            ns.waitPromise = {
+        if (options && !options.port) {
+            options.port = this.port;
+            this.server.listen(options);
+        } else {
+            this.server.listen(this.port);
+        }        
+        return new Promise<void>((resolve, reject) => {
+            ns.listenPromise = {
                 resolve,
                 reject
             };
@@ -138,24 +152,64 @@ export class NetService {
         };
         netConn.on("error", errorHandler);
         netConn.on("close", closeHandler)
+        if (this.acceptPromise) {
+            if (NetService.DEBUG) this.log(`Found acceptPromise. resolve it`);
+            this.acceptPromise.resolve(netConn);
+            this.acceptPromise = undefined;
+        } else {
+            if (NetService.DEBUG) this.log(`No acceptPromise. Add to waiting list`);
+            this.acceptWaitingList.push(netConn);
+        }
+    }
+
+    /**
+     * Accept a connection. If there is a connection waiting in the acceptWaitingList return it
+     * otherwise return a promise that resolves when a connection is made
+     * @returns A promise that resolves to a NetConn
+     */
+    accept(): Promise<NetConn> {
+        const ns = this;
+        return new Promise<NetConn>((resolve, reject) => {
+            ns.acceptPromise = {
+                resolve,
+                reject
+            };
+            if (NetService.DEBUG) this.log(`Accept. acceptPromise: ${ns.acceptPromise}`);
+            if (ns.acceptWaitingList.length > 0) {                
+                const netConn = ns.acceptWaitingList.shift();
+                if (netConn) {
+                    if (NetService.DEBUG) this.log(`accept waiting list. resolve`);
+                    ns.acceptPromise.resolve(netConn);
+                    ns.acceptPromise = undefined;
+                }
+            }
+        });
     }
 
     /**
      * Handle server close event
      */
     onClose() {
-        if (NetService.DEBUG) this.log(`onClose`);        
+        if (NetService.DEBUG) this.log(`onClose`);
+        if (this.listenPromise) {
+            this.listenPromise.reject(new Error("Server closed"));
+            this.listenPromise = undefined;
+        }
+        if (this.acceptPromise) {
+            this.acceptPromise.reject(new Error("Server closed"));
+            this.acceptPromise = undefined;
+        }
     }
 
     /**
-     * Handle server error event. If there is a waitPromise reject it
+     * Handle server error event. If there is a listenPromise reject it
      * @param error 
      */
     onError(error: any) {
         if (NetService.DEBUG) this.log(`Error`, error);
-        if (this.waitPromise) {
-            this.waitPromise.reject(error);
-            this.waitPromise = undefined;
+        if (this.listenPromise) {
+            this.listenPromise.reject(error);
+            this.listenPromise = undefined;
         }
     }
 }
@@ -167,6 +221,11 @@ export type NetConnClass = {
 
 export type WaitPromise = {
     resolve: () => void,
+    reject: (error: Error) => void
+};
+
+export type AcceptPromise = {
+    resolve: (conn: NetConn) => void,
     reject: (error: Error) => void
 };
 

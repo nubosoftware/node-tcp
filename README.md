@@ -1,6 +1,3 @@
-
-
-
 # Simple TCP and TLS classes for Node.js
 
  Promise (async/await) based TCP and TLS client and server for node.js
@@ -29,27 +26,75 @@ const  options = { port:  443, host:  'www.google.com', servername:  'www.google
 const  conn = await  NetConn.connectToHost(options, true);
 ```
 
-## Read data
-You can read data in various data types:
+## Read and Write data
+You can read and write data in various data types:
 ```js
-// Read data from the server
-// This will wait until the server sends data
-
-// Read binary buffer of 1024 bytes
+// Read/write binary buffer of 1024 bytes
 const  buffer = await  conn.readBuffer(1024);
+await  conn.writeBuffer(buffer);
 
-// Read integer
+// Read/write integer
 const  num1 = await  conn.readInt();
+await  conn.writeInt(num1);
 
-// Read float
+// Read/write float
 const  num2 = await  conn.readFloat();
+await  conn.writeFloat(num2);
 
-// Read 64 bit integer
+// Read/write 64 bit integer
 const  num3 = await  conn.readLong();
+await  conn.writeLong(num3);
 
-// Read string
+// Read/write string
 const  string = await  conn.readString();
+await  conn.writeString(string);
 
-// Read object (JSON)
+// Read/write object (JSON)
 const  obj = await  conn.readJSON();
+await  conn.writeJSON(obj);
 ``` 
+
+## TCP Server
+There are two options to implement TCP Server using `NetService` 
+### Option 1 - Handler function
+Accept new connection on a loop and send each connection to an handler function. The main server function should not `await` the handler function so the server can handle multiple concurrent connections. 
+```js
+/**
+* Example handler function, called when a connection is accepted
+* @param  {*}  conn Connection object
+*/
+async  function  handlerFunc(conn) {
+	try {
+		let  one = await  conn.readInt();
+		let  teststring = await  conn.readString();
+		await  conn.writeInt(2);
+		let  myObj2 = await  conn.readJSON();
+		console.log(myObj2);	
+	} catch (err) {
+		console.log(err);
+	}
+};
+/**
+* Example server
+*/
+async  function  mainServer() {
+	try {
+		const  port = 11481;
+		netService = new  NetService(port,NetConn);
+		// listen for connections
+		await  netService.listen();
+		console.log(`Listening on port ${port}`);
+		let  serverConn;
+		// accept connections
+		while (serverConn = await  netService.accept()) {
+			console.log(`Accepted connection from ${serverConn.socket.remoteAddress}:${serverConn.socket.remotePort}`);
+			handlerFunc(serverConn); // start handler - do not await!
+		}
+	} catch (err) {
+		console.log(err);
+	}
+}
+```
+### Option 2 - Extent `NetConn` class 
+Create a class that extend the `NetConn` and override the constructor. When the constructor called start a handler function in that connection class.
+When creating the  `NetService`  object, reference your class.
