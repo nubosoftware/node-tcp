@@ -1,7 +1,7 @@
 # Simple TCP and TLS classes for Node.js
 
- Promise (async/await) based TCP and TLS client and server for node.js
-Write TCP and TLS clients and servers without the need to deal with streams and callbacks
+ Promise (async/await) based TCP and TLS client and server for node.js.
+ Write TCP and TLS clients and servers without the need to deal with streams and callbacks
 
 ## Install
 
@@ -62,7 +62,7 @@ You can read and write data in various data types:
 const  buffer = await  conn.readBuffer(1024);
 await  conn.writeBuffer(buffer);
 
-// Read/write integer
+// Read/write 32 bit integer
 const  num1 = await  conn.readInt();
 await  conn.writeInt(num1);
 
@@ -124,7 +124,7 @@ async  function  mainServer() {
 	}
 }
 ```
-### Option 2 - Extent `NetConn` class 
+### Option 2 - Extend `NetConn` class 
 Create a class that extend the `NetConn` and override the constructor. When the constructor called start a handler function.
 When creating the  `NetService`  object, reference your class.
 ```js
