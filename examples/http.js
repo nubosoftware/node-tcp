@@ -19,7 +19,7 @@ async function mainClient() {
         let data = await conn.readBuffer(undefined);
         console.log(`Received data: ${data.length} bytes`);        
         const html = data.toString('utf8');
-        console.log(html);
+        //console.log(html);
         // Close connection
         await conn.end();
 
@@ -34,7 +34,7 @@ async function mainClient() {
         let data2 = await conn.readBuffer(undefined);
         console.log(`Received data: ${data2.length} bytes`);        
         const html2 = data2.toString('utf8');
-        console.log(html2);
+        //console.log(html2);
         // Close connection
         await conn2.end();
 

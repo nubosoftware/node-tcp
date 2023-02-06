@@ -1,14 +1,13 @@
-
 import { NetService } from '../src/netService';
 import { NetConn } from '../src/netConn';
 import net from 'net';
 import { Logger } from '../src/logger';
 
-
+const largeStrSize = 10000000;
 
 class TestServerConn extends NetConn {
-    constructor(socket: net.Socket, server?: any, options?: any, logger?: Logger) {
-        super(socket, server, options, logger);
+    constructor(socket: net.Socket, server?: any, options?: any) {
+        super(socket, server, options);
         console.log(`TestServerConn: connected to ${socket.remoteAddress}:${socket.remotePort}`);
         expect(socket).toBeDefined();
         this.processData();
@@ -23,7 +22,8 @@ class TestServerConn extends NetConn {
             let myObj = {
                 a: 1,
                 b: 'test',
-                c: [1, 2, 3]
+                c: [1, 2, 3],
+                str: new Array(largeStrSize + 1).join( "#" )
             }
             await this.writeJSON(myObj);
         } catch (err) {
@@ -33,12 +33,16 @@ class TestServerConn extends NetConn {
     }
 }
 
-// basic test without initialization of coreModule
+// basic test just chek that the classes are defined
 test('Basic Test', () => {
     expect(NetConn).toBeDefined();
     expect(NetService).toBeDefined();
 });
 
+/**
+ * Test a simple tcp connection. Connect to google.com:443 and send a simple http request
+ * and check that we get a response.
+ */
 test('Simple Https', async () => {
     try {
         const options = { port: 443, host: 'www.google.com', servername: 'www.google.com' }
@@ -59,10 +63,15 @@ test('Simple Https', async () => {
     }
 });
 
+/**
+ * Test both client and server. Start a server and connect to it.
+ * The server will send a json object and the client will check that it is correct.
+ * The server connection in implemented in the TestServerConn class.
+ */
 test('Client and Server', async () => {
     try {
         const port = 11480;
-        const netService = new NetService(port, TestServerConn, undefined, undefined, undefined);
+        const netService = new NetService(port, TestServerConn, undefined, undefined);
         await netService.listen();
         console.log(`Listening on port ${port}`);
         const options = { port: port, host: 'localhost', servername: 'localhost' }
@@ -75,12 +84,14 @@ test('Client and Server', async () => {
         console.log(`Ack: ${ack}`);
         expect(ack).toBe(2);
         let myObj = await conn.readJSON();
-        console.log(`Received data: ${JSON.stringify(myObj)}`);
+        console.log(`Received data: myObj`);
         expect(myObj).toBeDefined();
         expect(myObj.a).toBe(1);
         expect(myObj.b).toBe('test');
         expect(myObj.c).toBeDefined();
         expect(myObj.c.length).toBe(3);
+        expect(myObj.str).toBeDefined();
+        expect(myObj.str.length).toBe(largeStrSize);
         await conn.end();
         netService.close();
     } catch (err) {
@@ -89,7 +100,10 @@ test('Client and Server', async () => {
     }
 });
 
-
+/**
+ * A simple handler function that will be called when a connection is accepted.
+ * @param conn 
+ */
 const handlerFunc = async (conn: NetConn) => {
     try {
         let one = await conn.readInt();
@@ -110,10 +124,20 @@ const handlerFunc = async (conn: NetConn) => {
 };
 
 
+/**
+ * Wait for a number of milliseconds
+ * @param ms 
+ * @returns 
+ */
 function wait(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Test both client and server. Start a server and connect to it.
+ * The server will send a json object and the client will check that it is correct.
+ * The server connection in implemented in the handlerFunc function.
+ */
 test('Client and Server with accept', async () => {
     try {
         const port = 11481;

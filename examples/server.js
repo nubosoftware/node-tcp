@@ -41,21 +41,21 @@ class ExampleServerConn extends NetConn {
     }
 }
 
-/**
- * Example server
- */
-async function mainServer() {
-    try {
-        const port = 11481;
-        // create server, passing in connection class
-        netService = new NetService(port,ExampleServerConn);
-        // listen for connections
-        await netService.listen();
-        console.log(`Listening on port ${port}`);       
-    } catch (err) {
-        console.log(err);
-    }
-}
+// /**
+//  * Example server
+//  */
+// async function mainServer() {
+//     try {
+//         const port = 11481;
+//         // create server, passing in connection class
+//         netService = new NetService(port,ExampleServerConn);
+//         // listen for connections
+//         await netService.listen();
+//         console.log(`Listening on port ${port}`);       
+//     } catch (err) {
+//         console.log(err);
+//     }
+// }
 
 // /**
 //  * Example TLS server
@@ -106,26 +106,26 @@ async function mainServer() {
     }
 };
 
-// /**
-//  * Example server with handler function
-//  */
-// async function mainServer() {
-//     try {
-//         const port = 11481;       
-//         netService = new NetService(port,NetConn);
-//         // listen for connections
-//         await netService.listen();
-//         console.log(`Listening on port ${port}`);                            
-//         let serverConn;
-//         // accept connections
-//         while (serverConn = await netService.accept()) {
-//             console.log(`Accepted connection from ${serverConn.socket.remoteAddress}:${serverConn.socket.remotePort}`);
-//             handlerFunc(serverConn); // start handler - do not await!
-//         }          
-//     } catch (err) {
-//         console.log(err);
-//     }
-// }
+/**
+ * Example server with handler function
+ */
+async function mainServer() {
+    try {
+        const port = 11481;       
+        netService = new NetService(port);
+        // listen for connections
+        await netService.listen();
+        console.log(`Listening on port ${port}`);                            
+        let serverConn;
+        // accept connections
+        while (serverConn = await netService.accept()) {
+            console.log(`Accepted connection from ${serverConn.socket.remoteAddress}:${serverConn.socket.remotePort}`);
+            handlerFunc(serverConn); // start handler - do not await!
+        }          
+    } catch (err) {
+        console.log(err);
+    }
+}
 
 
 

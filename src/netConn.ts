@@ -4,14 +4,18 @@ import net from "net";
 import tls from "tls";
 import { EventEmitter } from "events";
 import { SequentialTaskQueue } from "sequential-task-queue";
-import { Logger } from "./logger";
+import debug from "debug";
+
+const log = debug("node-tcp:NetConn");
 
 
-const COMPRESSION_BUFFER_SIZE = 64000;
+const unsignedIntMax = 4294967295;
+const signedShortMax = 32767;
+
 
 type BWStats = {
     addInBytes: (bytes: number) => void;
-    addOutBytes: (bytes: number) => void;    
+    addOutBytes: (bytes: number) => void;
 }
 
 
@@ -24,51 +28,51 @@ type BWStats = {
 export class NetConn extends EventEmitter {
 
     TAG: string;
-    socket: net.Socket;   
+    socket: net.Socket;
     writeQ: SequentialTaskQueue;
     _err: Error | any;
     email?: string;
-    static DEBUG = false;
     bwStats?: BWStats;
     countBWStats = false;
     inBytes: number = 0;
     outBytes: number = 0;
-    logger?: Logger;
     options?: any;
+    log: debug.Debugger;
 
     /**
      * Create a new NetConn based on a socket
      * @param {net.Socket} socket
      */
-    constructor(socket: net.Socket, server?: any, options?: any, logger?: Logger) {
+    constructor(socket: net.Socket, server?: any, options?: any) {
         super();
         this.socket = socket;
-        this.TAG = `${Object.getPrototypeOf(this).constructor.name}_${socket.remoteAddress}:${socket.remotePort}`;        
+        this.TAG = `${Object.getPrototypeOf(this).constructor.name}_${socket.remoteAddress}:${socket.remotePort}`;
+        this.log = debug(`node-tcp:NetConn:${this.TAG}`);
+        this.log(`constructor`);
         this.options = options;
-        this.logger = logger;
         socket.setNoDelay(true);
         this.writeQ = new SequentialTaskQueue();
 
         const writeQErrorHandler = (err: Error | any) => {
-            if (NetConn.DEBUG) this.log(`writeQ error: ${err}`);
+            this.log(`writeQ error: ${err}`);
         };
         this.writeQ.on("error", writeQErrorHandler);
         const nc = this;
 
         const errorHandler = (err: Error | any) => {
-            if (NetConn.DEBUG) nc.log(`Error on socket`, err);
-            nc._err = err;           
+            nc.log(`Error on socket`, err);
+            nc._err = err;
         };
 
         const closeHandler = () => {
-            if (NetConn.DEBUG) nc.log(`Socket closed`);
+            nc.log(`Socket closed`);
 
             nc.socket.removeListener("error", errorHandler);
             nc.socket.removeListener("close", closeHandler)
-            nc.emit('close');            
+            nc.emit('close');
         }
         const timeoutHandler = () => {
-            if (NetConn.DEBUG) nc.log(`Socket timeout`);
+            nc.log(`Socket timeout`);
             try {
                 nc.socket.destroy(new Error("Socket timeout"));
             } catch (err) {
@@ -78,22 +82,7 @@ export class NetConn extends EventEmitter {
 
         this.socket.on("error", errorHandler);
         this.socket.on("close", closeHandler)
-        this.socket.on('timeout',timeoutHandler);
-    }
-
-    /**
-     * Log message with this connection's tag
-     * @param msg 
-     */
-    log(msg: string,err?: Error | any) {
-        if(this.logger) {
-            this.logger.info(`${this.TAG}: ${msg}`,err);
-        } else {
-            if (err)
-                console.log(`${this.TAG}: ${msg}`,err);
-            else
-                console.log(`${this.TAG}: ${msg}`);
-        }
+        this.socket.on('timeout', timeoutHandler);
     }
 
     /**
@@ -102,8 +91,9 @@ export class NetConn extends EventEmitter {
      * @param isTLS 
      * @returns A NetConn object that wraps the socket
      */
-    static async connectToHost(options: net.NetConnectOpts | tls.ConnectionOptions, isTLS: boolean = false): Promise<NetConn> {        
-        const socket = await NetConn.promiseConnect(options,isTLS);
+    static async connectToHost(options: net.TcpNetConnectOpts | tls.ConnectionOptions, isTLS: boolean = false): Promise<NetConn> {
+        log(`connectToHost. host: ${options.host}, port: ${options.port}, isTLS: ${isTLS}`);
+        const socket = await NetConn.promiseConnect(options, isTLS);
         return new NetConn(socket);
     }
 
@@ -113,24 +103,24 @@ export class NetConn extends EventEmitter {
      * @param isTLS 
      * @returns A net.Socket or tls.Socket object
      */
-    static promiseConnect(options: net.NetConnectOpts | tls.ConnectionOptions, isTLS: boolean = false): Promise<net.Socket | tls.TLSSocket> {
-        return new Promise((resolve, reject) => {     
-            let socket: net.Socket | tls.TLSSocket;   
+    static promiseConnect(options: net.TcpNetConnectOpts | tls.ConnectionOptions, isTLS: boolean = false): Promise<net.Socket | tls.TLSSocket> {
+        return new Promise((resolve, reject) => {
+            let socket: net.Socket | tls.TLSSocket;
             const connectHandler = () => {
-                if (NetConn.DEBUG) console.log(`connected`);              
+                log(`connected`);
                 socket.removeListener("error", errorHandler);
                 resolve(socket);
             };
             const errorHandler = (err: any) => {
-                if (NetConn.DEBUG) console.log(`connect error`, err);
+                log(`connect error`, err);
                 socket.removeListener("connect", connectHandler);
                 reject(err)
             };
-            if (isTLS) {                
+            if (isTLS) {
                 socket = tls.connect(options, connectHandler).once("error", errorHandler);
             } else {
                 socket = net.connect(options as net.NetConnectOpts, connectHandler).once("error", errorHandler);
-            }                        
+            }
         });
     }
 
@@ -142,10 +132,9 @@ export class NetConn extends EventEmitter {
      */
     readBuffer(size?: number | undefined): Promise<Buffer> {
         const nc = this;
-        const debug = NetConn.DEBUG;
-        
-        if (debug) this.log(`readBuffer. size: ${size}`);
-        
+
+        nc.log(`readBuffer. size: ${size}`);
+
         const stream = this.socket;
         return new Promise((resolve, reject) => {
             if (nc._err) {
@@ -154,12 +143,12 @@ export class NetConn extends EventEmitter {
             }
             let isResolved = false;
             const readableHandler = () => {
-                if (debug) this.log(`readBuffer. readableHandler`);                
+                nc.log(`readBuffer. readableHandler`);
                 try {
-                    const chunk = stream.read(size);                    
+                    const chunk = stream.read(size);
                     if (chunk) {
                         const chunkSize = chunk.length;
-                        if (debug) this.log(`readBuffer. resolve: ${chunkSize}`);
+                        nc.log(`readBuffer. resolve: ${chunkSize}`);
                         removeListeners();
                         if (!isResolved) {
                             isResolved = true;
@@ -170,10 +159,10 @@ export class NetConn extends EventEmitter {
                         }
                         return;
                     } else {
-                        if (debug) this.log(`readBuffer. read returned null`);
+                        nc.log(`readBuffer. read returned null`);
                     }
                 } catch (err) {
-                    this.log(`readBuffer error: ${err}`);
+                    nc.log(`readBuffer error: ${err}`);
                     removeListeners();
                     if (!isResolved) {
                         isResolved = true;
@@ -182,7 +171,7 @@ export class NetConn extends EventEmitter {
                 }
             };
             const closeHandler = () => {
-                if (debug) this.log("readBuffer closeHandler");
+                nc.log("readBuffer closeHandler");
                 removeListeners();
                 if (!isResolved) {
                     isResolved = true;
@@ -191,7 +180,7 @@ export class NetConn extends EventEmitter {
             };
 
             const endHandler = () => {
-                if (debug) this.log("readBuffer endHandler");
+                nc.log("readBuffer endHandler");
                 removeListeners();
                 if (!isResolved) {
                     isResolved = true;
@@ -200,7 +189,7 @@ export class NetConn extends EventEmitter {
             };
 
             const errorHandler = (err: any) => {
-                if (debug) this.log("readBuffer errorHandler: " + err);
+                nc.log("readBuffer errorHandler: " + err);
                 removeListeners()
                 if (!isResolved) {
                     isResolved = true;
@@ -213,16 +202,16 @@ export class NetConn extends EventEmitter {
                 stream.removeListener("end", endHandler);
                 stream.removeListener("readable", readableHandler);
             }
-            
-            if (debug) this.log(`readBuffer. wait to readable`);
+
+            nc.log(`readBuffer. wait to readable`);
             stream.on('readable', readableHandler);
             stream.on("close", closeHandler)
             stream.on("end", endHandler)
             stream.on("error", errorHandler)
-            
+
         });
-    }    
-    
+    }
+
 
     /**
      * Write buffer to socket
@@ -230,7 +219,7 @@ export class NetConn extends EventEmitter {
      * @param doNotCompressChunk 
      * @returns Promise that will be resolved when buffer is written
      */
-    writeBuffer(chunk :Buffer): Promise<void> {
+    writeBuffer(chunk: Buffer): Promise<void> {
         const nc = this;
         return new Promise<void>((resolve, reject) => {
             if (nc._err) {
@@ -240,8 +229,9 @@ export class NetConn extends EventEmitter {
 
             let haveListeners = true;
 
-            const writeHandler = () => {                
+            const writeHandler = () => {
                 if (haveListeners) {
+                    nc.log(`writeBuffer. writeHandler`);
                     removeListeners();
                     resolve();
                 }
@@ -249,6 +239,7 @@ export class NetConn extends EventEmitter {
 
             const closeHandler = () => {
                 if (haveListeners) {
+                    nc.log(`writeBuffer. Connection closed`);
                     removeListeners()
                     reject(new Error("writeBuffer: Connection closed"))
                 }
@@ -256,6 +247,7 @@ export class NetConn extends EventEmitter {
 
             const endHandler = () => {
                 if (haveListeners) {
+                    nc.log(`writeBuffer. Connection ended`);
                     removeListeners()
                     reject(new Error("writeBuffer: Connection ended"))
                 }
@@ -263,6 +255,7 @@ export class NetConn extends EventEmitter {
 
             const errorHandler = (err: any) => {
                 if (haveListeners) {
+                    nc.log(`writeBuffer. Error: ${err}`);
                     removeListeners()
                     reject(err)
                 }
@@ -277,8 +270,9 @@ export class NetConn extends EventEmitter {
             nc.socket.on("close", closeHandler);
             nc.socket.on("end", endHandler);
             nc.socket.on("error", errorHandler);
-            
+
             try {
+                nc.log(`writeBuffer. write ${chunk.length} bytes`);
                 nc.socket.write(chunk, writeHandler);
                 if (this.bwStats || this.countBWStats) {
                     this.addOutBytes(chunk.length);
@@ -287,7 +281,7 @@ export class NetConn extends EventEmitter {
                 nc.log(`write error: ${err}`);
                 errorHandler(err);
             }
-            
+
 
         });
     }
@@ -314,7 +308,7 @@ export class NetConn extends EventEmitter {
     addInBytes(bytes: number) {
         if (this.bwStats) {
             this.bwStats.addInBytes(bytes);
-        } else {            
+        } else {
             this.inBytes += bytes;
         }
     }
@@ -326,6 +320,7 @@ export class NetConn extends EventEmitter {
      */
     end() {
         const nc = this;
+        nc.log("end");
         return new Promise<void>((resolve, reject) => {
             nc.socket.end(() => {
                 resolve();
@@ -387,9 +382,9 @@ export class NetConn extends EventEmitter {
      * Read UTF string
      * @returns {string}
      */
-    async readUTF(): Promise<string> {        
-        const chunk = await this.readBuffer(2);
-        const strlen = chunk.readInt16BE();        
+    async readUTF(): Promise<string> {
+        const chunk = await this.readBuffer(4);
+        const strlen = chunk.readUint32BE();
         if (strlen > 0) {
             const chunk2 = await this.readBuffer(strlen);
             const text = chunk2.toString('utf8');
@@ -398,16 +393,43 @@ export class NetConn extends EventEmitter {
             return "";
         }
     }
-
+    /**
+     * Read UTF string (old format. length is 16 bit)
+     * @returns {string}
+     */
+    async readUTFOld(): Promise<string> {
+        const chunk = await this.readBuffer(2);
+        const strlen = chunk.readInt16BE();
+        if (strlen > 0) {
+            const chunk2 = await this.readBuffer(strlen);
+            const text = chunk2.toString('utf8');
+            return text;
+        } else {
+            return "";
+        }
+    }
     /**
      * Read UTF string or null
      * @returns {string | null}
      */
-    async readString(): Promise<string | null> {        
-        const isNull = await this.readBoolean();       
+    async readString(): Promise<string | null> {
+        const isNull = await this.readBoolean();
         let text = null;
         if (!isNull) {
             text = await this.readUTF();
+        }
+        return text;
+    }
+
+    /**
+     * Read UTF string or null (old format. length is 16 bit)
+     * @returns {string | null}
+     */
+    async readStringOld(): Promise<string | null> {
+        const isNull = await this.readBoolean();
+        let text = null;
+        if (!isNull) {
+            text = await this.readUTFOld();
         }
         return text;
     }
@@ -451,7 +473,7 @@ export class NetConn extends EventEmitter {
      */
     async writeInt(num: number): Promise<void> {
         const b = Buffer.alloc(4);
-        b.writeInt32BE(num);        
+        b.writeInt32BE(num);
         await this.writeBuffer(b);
     }
 
@@ -471,17 +493,40 @@ export class NetConn extends EventEmitter {
      * @param {string} str
      */
     async writeString(str: string | null): Promise<void> {
-            if (!str) {                
-                await this.writeBoolean(true);
-                return;
-            }
-            const strbuf = Buffer.from(str, 'utf8');
-            const b = Buffer.alloc(3);            
-            b.writeInt8(0)
-            b.writeInt16BE(strbuf.length, 1);
-            await this.writeBuffer(b);
-            await this.writeBuffer(strbuf);
+        if (!str) {
+            await this.writeBoolean(true);
+            return;
         }
+        const strbuf = Buffer.from(str, 'utf8');
+        if (strbuf.length > unsignedIntMax) {
+            throw new Error(`String too long: ${strbuf.length} bytes`);
+        }
+        const b = Buffer.alloc(5);
+        b.writeInt8(0)
+        b.writeUInt32BE(strbuf.length, 1);
+        await this.writeBuffer(b);
+        await this.writeBuffer(strbuf);
+    }
+
+    /**
+     * Write string
+     * @param {string} str
+     */
+    async writeStringOld(str: string | null): Promise<void> {
+        if (!str) {
+            await this.writeBoolean(true);
+            return;
+        }
+        const strbuf = Buffer.from(str, 'utf8');
+        if (strbuf.length > signedShortMax) {
+            throw new Error(`String too long: ${strbuf.length} bytes`);
+        }
+        const b = Buffer.alloc(3);
+        b.writeInt8(0)
+        b.writeInt16BE(strbuf.length, 1);
+        await this.writeBuffer(b);
+        await this.writeBuffer(strbuf);
+    }
 
 
     /**
@@ -500,7 +545,7 @@ export class NetConn extends EventEmitter {
      */
     async writeLong(num: bigint): Promise<void> {
         const b = Buffer.alloc(8);
-        b.writeBigInt64BE(num);        
+        b.writeBigInt64BE(num);
         await this.writeBuffer(b);
     }
 }

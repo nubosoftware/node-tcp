@@ -1,8 +1,9 @@
 import net from "net";
 import tls from "tls";
 import { NetConn } from "./netConn";
-import { Logger } from "./logger";
+import debug from "debug";
 
+const log = debug ("node-tcp:netService");
 
 
 /**
@@ -11,7 +12,6 @@ import { Logger } from "./logger";
 export class NetService {
 
     private TAG: string;
-    private logger?: Logger;
     private server: net.Server | tls.Server;
     private serverType: string;
     private port: number;
@@ -19,12 +19,15 @@ export class NetService {
     private options?: any;
     private connClass: NetConnClass;
     private serviceName: string;
-    static DEBUG = false;
+
 
     
     private listenPromise?: WaitPromise;
     private acceptPromise?: AcceptPromise;
     private acceptWaitingList: NetConn[] = [];
+    private isClientAcceptConnections: boolean = false;
+
+    log: debug.Debugger;
 
     /**
      * Create a new NetService
@@ -32,18 +35,16 @@ export class NetService {
      * @param connClass A class that extends NetConn
      * @param tlsOptions option for tls.createServer leave undefined for tcp server
      * @param options optional options for the NetConn
-     * @param logger optional logger
      */
-    constructor(port: number, connClass?:NetConnClass, tlsOptions?: tls.TlsOptions,options?:any,logger?:Logger) {
+    constructor(port: number, connClass?:NetConnClass, tlsOptions?: tls.TlsOptions,options?:any) {
         this.port = port;       
         this.tlsOptions = tlsOptions;
-        this.options = options;
-        this.logger = logger;
+        this.options = options;       
         if (!connClass) {
             connClass = NetConn;
         }
         this.connClass = connClass;       
-        this.serviceName = `${connClass.name}Service`;
+        this.serviceName = `${connClass.name}Service`;        
         if (tlsOptions) {            
             this.tlsOptions = tlsOptions;
             this.server = tls.createServer(tlsOptions);
@@ -53,10 +54,13 @@ export class NetService {
             this.serverType = "tcp";
         }
         this.TAG = `${this.serviceName}_${this.serverType}_${this.port}`;
-
-
-
+        this.log = debug (`node-tcp:netService:${this.TAG}`);        
         const cs = this;
+
+        if (connClass.name === "NetConn") {            
+            this.log(`NetConn is the connClass. Set isClientAcceptConnections to true`);
+            this.isClientAcceptConnections = true;
+        }
 
         if (this.serverType === "tcp") {
             this.server.on('connection', (socket) => {
@@ -80,7 +84,7 @@ export class NetService {
                 this.port = addr.port;
                 this.TAG = `${this.serviceName}_${this.serverType}_${this.port}`;
             }            
-            if (NetService.DEBUG) this.log(`Listening. port: ${this.port}. serverType: ${this.serverType}`);
+            cs.log(`Listening. port: ${this.port}. serverType: ${this.serverType}`);           
             
             if (this.listenPromise) {
                 this.listenPromise.resolve();
@@ -88,24 +92,8 @@ export class NetService {
             }
         });
 
-        if (NetService.DEBUG) this.log(`Create ${this.serverType} server on port ${this.port}`);
-    }
-
-    /**
-     * Print a log message
-     * @param msg 
-     */
-    log(msg: string, err?: Error) {
-        if (this.logger) {
-            this.logger.info(`${this.TAG}: ${msg}`,err);
-        } else {
-            if (err) {
-                console.log(`${this.TAG}: ${msg}`,err);
-            } else {
-                console.log(`${this.TAG}: ${msg}`);
-            }
-        }
-    }
+        cs.log(`Create ${this.serverType} server on port ${this.port}`);
+    } 
 
     /**
      * Listen for connections
@@ -132,6 +120,7 @@ export class NetService {
      */
     close() {
         if (this.server) {
+            this.log(`Close server`);
             this.server.close();
         }
     }
@@ -141,24 +130,26 @@ export class NetService {
      * @param socket 
      */
     private onConnection(socket: net.Socket) {
-        if (NetService.DEBUG) this.log(`HandleConnection. remoteAddress: ${socket.remoteAddress}`);
-        const netConn = new this.connClass(socket,this,this.options,this.logger);
+        this.log(`HandleConnection. remoteAddress: ${socket.remoteAddress}`);
+        const netConn = new this.connClass(socket,this,this.options);
         const errorHandler = (err: any) => {
-            if (NetService.DEBUG) this.log(`Connection error`, err);
+            this.log(`Connection error`, err);
         };
         const closeHandler = (err: any) => {
-            if (NetService.DEBUG) this.log(`${this.TAG}: connection closed`);
+            this.log(`${this.TAG}: connection closed`);
             socket.end();
         };
         netConn.on("error", errorHandler);
         netConn.on("close", closeHandler)
         if (this.acceptPromise) {
-            if (NetService.DEBUG) this.log(`Found acceptPromise. resolve it`);
+            this.log(`Found acceptPromise. resolve it`);
             this.acceptPromise.resolve(netConn);
             this.acceptPromise = undefined;
-        } else {
-            if (NetService.DEBUG) this.log(`No acceptPromise. Add to waiting list`);
+        } else if (this.isClientAcceptConnections) {
+            this.log(`No acceptPromise. Add to waiting list`);
             this.acceptWaitingList.push(netConn);
+        } else {
+            this.log(`Client is not accepting connections. Expecting extended NetConn class to handle connection`);
         }
     }
 
@@ -174,11 +165,11 @@ export class NetService {
                 resolve,
                 reject
             };
-            if (NetService.DEBUG) this.log(`Accept. acceptPromise: ${ns.acceptPromise}`);
+            this.log(`Accept. acceptPromise: ${ns.acceptPromise}`);
             if (ns.acceptWaitingList.length > 0) {                
                 const netConn = ns.acceptWaitingList.shift();
                 if (netConn) {
-                    if (NetService.DEBUG) this.log(`accept waiting list. resolve`);
+                    this.log(`accept waiting list. resolve`);
                     ns.acceptPromise.resolve(netConn);
                     ns.acceptPromise = undefined;
                 }
@@ -190,7 +181,7 @@ export class NetService {
      * Handle server close event
      */
     onClose() {
-        if (NetService.DEBUG) this.log(`onClose`);
+        this.log(`onClose`);
         if (this.listenPromise) {
             this.listenPromise.reject(new Error("Server closed"));
             this.listenPromise = undefined;
@@ -206,7 +197,7 @@ export class NetService {
      * @param error 
      */
     onError(error: any) {
-        if (NetService.DEBUG) this.log(`Error`, error);
+        this.log(`Error`, error);
         if (this.listenPromise) {
             this.listenPromise.reject(error);
             this.listenPromise = undefined;
@@ -216,7 +207,7 @@ export class NetService {
 
 export type NetConnClass = {
     // tslint:disable-next-line     
-    new(socket: net.Socket, server?: any, options?: any, logger?: Logger): NetConn   
+    new(socket: net.Socket, server?: any, options?: any): NetConn   
 }
 
 export type WaitPromise = {
@@ -228,5 +219,3 @@ export type AcceptPromise = {
     resolve: (conn: NetConn) => void,
     reject: (error: Error) => void
 };
-
-// module.exports = NetService;
