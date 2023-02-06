@@ -10,20 +10,49 @@ npm install node-tcp
  ```
  
 Import classes:
-```
+```js
 import { NetConn, NetService } from  "node-tcp";
 ```
 or
-```
+```js
 const { NetConn, NetService } = require("node-tcp");
 ```
  
  ## TCP/TLS Client
  use `NetConn.connectToHost` to connect to a tcp/tls host and obtain the connection object. options are the options sent to [net.connect](https://nodejs.org/api/net.html#socketconnect) or  [tls.connect](https://nodejs.org/api/tls.html#tlsconnectoptions-callback)
+ ### TCP Client
+ ```js
+          // Connect to HTTP server (TCP)
+        const options = { port: 80, host: 'www.google.com', servername: 'www.google.com' }        
+        const conn = await NetConn.connectToHost(options, false);
+        console.log(`Connected to ${options.host}:${options.port} using TCP`);
+        // Write simple HTTP request
+        await conn.writeBuffer(Buffer.from('GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n', 'utf8'));
+        console.log(`Sent data`);
+        // Read response
+        let data = await conn.readBuffer(undefined);
+        console.log(`Received data: ${data.length} bytes`);        
+        const html = data.toString('utf8');
+        console.log(html);
+        // Close connection
+        await conn.end();   
+ ```
+ ### TLS Client
 ```js
-// Connect to Google HTTPS
-const  options = { port:  443, host:  'www.google.com', servername:  'www.google.com' }
-const  conn = await  NetConn.connectToHost(options, true);
+        // Connect to Google HTTPS (TLS)
+        const options2 = { port: 443, host: 'www.google.com', servername: 'www.google.com' }
+        const conn2 = await NetConn.connectToHost(options2, true);
+        console.log(`Connected to ${options2.host}:${options2.port} using TLS`);
+        // Write simple HTTP request
+        await conn2.writeBuffer(Buffer.from('GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n', 'utf8'));
+        console.log(`Sent data`);
+        // Read response
+        let data2 = await conn.readBuffer(undefined);
+        console.log(`Received data: ${data2.length} bytes`);        
+        const html2 = data2.toString('utf8');
+        console.log(html2);
+        // Close connection
+        await conn2.end();
 ```
 
 ## Read and Write data
@@ -96,5 +125,72 @@ async  function  mainServer() {
 }
 ```
 ### Option 2 - Extent `NetConn` class 
-Create a class that extend the `NetConn` and override the constructor. When the constructor called start a handler function in that connection class.
+Create a class that extend the `NetConn` and override the constructor. When the constructor called start a handler function.
 When creating the  `NetService`  object, reference your class.
+```js
+let netService;
+
+/**
+ * Example server connection class. This class extends NetConn and adds
+ * call to processData() in the constructor. This is where you would
+ * implement your server connection logic.
+ */
+class ExampleServerConn extends NetConn {
+    constructor(socket, server, options, logger) {
+        super(socket, server, options, logger);
+        console.log(`TestServerConn: connected to ${socket.remoteAddress}:${socket.remotePort}`);       
+        this.processData();
+    }
+    async processData() {
+        try {        
+            const conn = this;
+            let one = await conn.readInt();      
+            let teststring = await conn.readString();       
+            await conn.writeInt(2);
+            let myObj = {
+                a: 1,
+                b: 'test',
+                c: [1, 2, 3]
+            }
+            await conn.writeJSON(myObj);
+            let myObj2 = await conn.readJSON();
+            console.log(myObj2);
+            if (myObj2.command === 'quit') {
+                netService.close();
+            }
+        } catch (err) {
+            console.log(err);       
+        }
+    }
+}
+
+/**
+ * Example server
+ */
+async function mainServer() {
+    try {
+        const port = 11481;
+        // create server, passing in connection class
+        netService = new NetService(port,ExampleServerConn);
+        // listen for connections
+        await netService.listen();
+        console.log(`Listening on port ${port}`);       
+    } catch (err) {
+        console.log(err);
+    }
+}
+```
+## TLS Server
+Implement TLS server exacly the same as TCP Server, but add TLS options to NetService arguments
+```js
+        // create server, passing in port, connection class, and TLS options
+        const tlsOptions = {
+            key: await fs.promises.readFile('server.key'),
+            cert: await fs.promises.readFile('server.crt')
+        };        
+        const port = 11443;
+        netService = new NetService(port,ExampleServerConn,tlsOptions);
+        // listen for connections
+        await netService.listen();
+        console.log(`Listening on port ${port} using TLS`);
+```
