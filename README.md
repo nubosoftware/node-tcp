@@ -195,3 +195,8 @@ Implement TLS server exactly the same as TCP Server, but add TLS options to NetS
         await netService.listen();
         console.log(`Listening on port ${port} using TLS`);
 ```
+## Examples
+Example java script files are available at the [examples folder](https://github.com/nubosoftware/node-tcp/tree/main/examples)
+
+The `json-server.js` and `json-client.js` demonstrate server and client that communicate with JSON messages. 
+This will help you to implement a very simple protocol for asynchronous communication between client and server.
