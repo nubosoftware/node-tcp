@@ -1,7 +1,6 @@
 import { NetService } from '../src/netService';
 import { NetConn } from '../src/netConn';
 import net from 'net';
-import { Logger } from '../src/logger';
 
 const largeStrSize = 10000000;
 

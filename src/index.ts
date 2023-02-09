@@ -1,3 +1,2 @@
-export { Logger } from './logger';
-export { NetConn } from './netconn';
-export { NetService } from './netservice';
+export { NetConn } from './netConn';
+export { NetService } from './netService';
