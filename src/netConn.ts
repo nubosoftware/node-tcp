@@ -4,9 +4,21 @@ import net from "net";
 import tls from "tls";
 import { EventEmitter } from "events";
 import { SequentialTaskQueue } from "sequential-task-queue";
+import { CompressedSocket } from "./compressedSocket";
 import debug from "debug";
+import { Readable } from "stream";
+
+
+// enable erorr logging
+if (process.env.DEBUG) {
+    debug.enable(`${process.env.DEBUG},node-tcp:error:*`);
+} else {
+    debug.enable("node-tcp:error:*");
+}
+
 
 const log = debug("node-tcp:NetConn");
+const errorlog = debug("node-tcp:error:NetConn");
 
 
 const unsignedIntMax = 4294967295;
@@ -38,16 +50,22 @@ export class NetConn extends EventEmitter {
     outBytes: number = 0;
     options?: any;
     log: debug.Debugger;
+    compressIn: boolean = false;
+    compressOut: boolean = false;
+    compressedSocket?: CompressedSocket;
 
     /**
      * Create a new NetConn based on a socket
      * @param {net.Socket} socket
      */
-    constructor(socket: net.Socket, server?: any, options?: any) {
+    constructor(socket: net.Socket, server?: any, options?: any, errorLogger?: (...args: any[]) => any) {
         super();
+        if (errorLogger) {
+            errorlog.log = errorLogger;
+        }
         this.socket = socket;
         this.TAG = `${Object.getPrototypeOf(this).constructor.name}_${socket.remoteAddress}:${socket.remotePort}`;
-        this.log = debug(`node-tcp:NetConn:${this.TAG}`);
+        this.log = debug(`node-tcp:NetConn:${this.TAG}`);        
         this.log(`constructor`);
         this.options = options;
         socket.setNoDelay(true);
@@ -124,6 +142,28 @@ export class NetConn extends EventEmitter {
         });
     }
 
+    /**
+     * Start to compress data on the socket in one or both directions.
+     * If the socket is already compressed, this method does nothing.
+     * Compression cannot be disabled once enabled.
+     * @param compressIn 
+     * @param compressOut 
+     */
+    setCompression(compressIn: boolean, compressOut: boolean) {        
+        if (compressIn && this.compressIn === false) {
+            if (!this.compressedSocket) {
+                this.compressedSocket = new CompressedSocket(this.socket);
+            }
+            this.compressIn = true;
+        } 
+        if (compressOut) {
+            if (!this.compressedSocket) {
+                this.compressedSocket = new CompressedSocket(this.socket);                
+            }
+            this.compressOut = true;
+        }
+    }
+
 
     /**
      * Read a Buffer from the socket
@@ -135,7 +175,12 @@ export class NetConn extends EventEmitter {
 
         nc.log(`readBuffer. size: ${size}`);
 
-        const stream = this.socket;
+        let stream: Readable;
+        if (this.compressIn && this.compressedSocket) {
+            stream = this.compressedSocket;
+        } else {
+            stream = this.socket;
+        }
         return new Promise((resolve, reject) => {
             if (nc._err) {
                 reject(nc._err);
@@ -214,12 +259,28 @@ export class NetConn extends EventEmitter {
 
 
     /**
+     * Flush the compression buffer. If it not compressed, this method does nothing.
+     */
+    async flush(): Promise<void> {
+        if (this.compressedSocket && this.compressOut) {
+            await this.compressedSocket.compressAndSend()
+        }
+    }
+
+
+    /**
      * Write buffer to socket
      * @param chunk 
      * @param doNotCompressChunk 
      * @returns Promise that will be resolved when buffer is written
      */
-    writeBuffer(chunk: Buffer): Promise<void> {
+    writeBuffer(chunk: Buffer, writeUnCompressed: boolean = false): Promise<void> {
+        if (this.compressOut && this.compressedSocket) {
+            if (this.bwStats || this.countBWStats) {
+                this.addOutBytes(chunk.length);
+            }
+            return this.compressedSocket.writeBuffer(chunk);
+        }
         const nc = this;
         return new Promise<void>((resolve, reject) => {
             if (nc._err) {

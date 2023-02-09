@@ -4,7 +4,7 @@ import { NetConn } from "./netConn";
 import debug from "debug";
 
 const log = debug ("node-tcp:netService");
-
+const errorlog = debug("node-tcp:error:netService");
 
 /**
  * NetService is a TCP or TLS server that listen on a port and create a NetConn for each connection
@@ -28,6 +28,7 @@ export class NetService {
     private isClientAcceptConnections: boolean = false;
 
     log: debug.Debugger;
+    errorlog: debug.Debugger;
 
     /**
      * Create a new NetService
@@ -54,7 +55,8 @@ export class NetService {
             this.serverType = "tcp";
         }
         this.TAG = `${this.serviceName}_${this.serverType}_${this.port}`;
-        this.log = debug (`node-tcp:netService:${this.TAG}`);        
+        this.log = debug (`node-tcp:netService:${this.TAG}`);      
+        this.errorlog = debug(`node-tcp:error:netService:${this.TAG}`);  
         const cs = this;
 
         if (connClass.name === "NetConn") {            
@@ -133,7 +135,7 @@ export class NetService {
         this.log(`HandleConnection. remoteAddress: ${socket.remoteAddress}`);
         const netConn = new this.connClass(socket,this,this.options);
         const errorHandler = (err: any) => {
-            this.log(`Connection error`, err);
+            this.errorlog(`Connection error`, err);
         };
         const closeHandler = (err: any) => {
             this.log(`${this.TAG}: connection closed`);
@@ -197,7 +199,7 @@ export class NetService {
      * @param error 
      */
     onError(error: any) {
-        this.log(`Error`, error);
+        this.errorlog(`Error`, error);
         if (this.listenPromise) {
             this.listenPromise.reject(error);
             this.listenPromise = undefined;

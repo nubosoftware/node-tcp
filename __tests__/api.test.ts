@@ -116,6 +116,7 @@ const handlerFunc = async (conn: NetConn) => {
             c: [1, 2, 3]
         }
         await conn.writeJSON(myObj);
+        await conn.flush();
     } catch (err) {
         console.log(err);
         throw err;
@@ -171,5 +172,44 @@ test('Client and Server with accept', async () => {
         throw err;
     }
 });
+
+test('Client and Server with compression', async () => {
+    try {
+        const port = 11481;       
+        const netService = new NetService(port);
+        await netService.listen();        
+        console.log(`Listening on port ${port}`);
+        const options = { port: port, host: 'localhost', servername: 'localhost' }
+        let conn: NetConn = await NetConn.connectToHost(options, false);
+        console.log(`Connected to ${options.host}:${options.port}`);
+        conn.setCompression(true,true); // compress both sides
+        // await wait(1000);
+        let serverConn = await netService.accept();
+        console.log(`Accepted connection from ${serverConn.socket.remoteAddress}:${serverConn.socket.remotePort}`);
+        serverConn.setCompression(true,true); // compress both sides        
+        handlerFunc(serverConn); // start processing - do not await!
+        await conn.writeInt(1);
+        await conn.writeString('teststring');
+        await conn.flush()
+        console.log(`Sent data`);
+        let ack = await conn.readInt();
+        console.log(`Ack: ${ack}`);
+        expect(ack).toBe(2);
+        let myObj = await conn.readJSON();
+        console.log(`Received data: ${JSON.stringify(myObj)}`);
+        expect(myObj).toBeDefined();
+        expect(myObj.a).toBe(1);
+        expect(myObj.b).toBe('test');
+        expect(myObj.c).toBeDefined();
+        expect(myObj.c.length).toBe(3);
+        await conn.end();
+        netService.close();
+    } catch (err) {
+        console.log(err);
+        throw err;
+    }
+});
+
+
 
 
