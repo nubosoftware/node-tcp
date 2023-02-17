@@ -11,14 +11,14 @@ const errorlog = debug("node-tcp:error:netService");
  */
 export class NetService {
 
-    private TAG: string;
+    TAG: string;
     private server: net.Server | tls.Server;
-    private serverType: string;
-    private port: number;
-    private tlsOptions?: tls.TlsOptions;
-    private options?: any;
+    serverType: string;
+    port: number;
+    tlsOptions?: tls.TlsOptions;
+    options?: any;
     private connClass: NetConnClass;
-    private serviceName: string;
+    serviceName: string;
 
 
     
