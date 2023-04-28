@@ -211,5 +211,75 @@ test('Client and Server with compression', async () => {
 });
 
 
+class TestServerConnTimeout extends NetConn {
+    constructor(socket: net.Socket, server?: any, options?: any) {
+        super(socket, server, options);
+        console.log(`TestServerConn: connected to ${socket.remoteAddress}:${socket.remotePort}`);
+        expect(socket).toBeDefined();
+        this.processData();
+    }
+    async processData() {
+        try {
+            this.setTimeout(2000); // 2 seconds
+            let one = await this.readInt();
+            expect(one).toBe(1);
+            let teststring = await this.readString();
+            expect(teststring).toBe('teststring');
+            await this.writeInt(2);
+            
+            //console.log(`TestServerConn: timeout should have occurred. socket.destroyed: ${this.socket.destroyed}`);
+            //expect(this.socket.destroyed).toBe(true);
+        } catch (err) {
+            console.log(err);
+            throw err;
+        }
+    }
+}
+/**
+ * Test timeouts
+ */
+test('Timeouts', async () => {
+    try {
+        const port = 11480;
+        const netService = new NetService(port, TestServerConnTimeout, undefined, undefined);
+        await netService.listen();
+        console.log(`Listening on port ${port}`);
+        const options = { port: port, host: 'localhost', servername: 'localhost' }
+        let conn: NetConn = await NetConn.connectToHost(options, false);
+        console.log(`Connected to ${options.host}:${options.port}`);
+        conn.setReadTimeout(1000); // 1 second
+        await conn.writeInt(1);
+        await conn.writeString('teststring');
+        console.log(`Sent data`);
+        let ack = await conn.readInt();
+        console.log(`Ack: ${ack}`);
+        expect(ack).toBe(2);
+        // read should timeout after 1 second
+        try {
+            await conn.readString();
+        } catch (err: any) {
+            //console.log(`Timeout error: ${err.message}`);
+            expect(err.message).toBe('Read timeout');
+        }
+        await wait(3000); // wait 3 seconds timeout should have occurred from server side after 2 seconds
+        //console.log(`timeout should have occurred. socket.destroyed: ${conn.socket.destroyed}`);
+        expect(conn.socket.destroyed).toBe(true);
+
+        // try to read from socket after timeout
+        try {
+            await conn.readString();
+        } catch (err: any) {
+            //console.log(`Error: ${err.message}`);
+            expect(err.message).toBe('Socket destroyed');
+        }
+        await conn.end();
+        netService.close();
+    } catch (err) {
+        console.log(err);
+        throw err;
+    }
+});
+
+
 
 

@@ -53,6 +53,7 @@ export class NetConn extends EventEmitter {
     compressIn: boolean = false;
     compressOut: boolean = false;
     compressedSocket?: CompressedSocket;
+    readTimeout: number = 0;
 
     /**
      * Create a new NetConn based on a socket
@@ -164,6 +165,24 @@ export class NetConn extends EventEmitter {
         }
     }
 
+    /**
+     * Set the timeout on the socket
+     * If an idle socket times out, it will be destroyed.
+     * @param timeout The timeout in milliseconds, or 0 to disable
+     */
+    setTimeout(timeout: number) {
+        this.socket.setTimeout(timeout);
+    }
+
+    /**
+     * Set the timeout on the socket for read operations
+     * If a read operation times out, the read will be aborted.
+     * @param timeout The timeout in milliseconds, or 0 to disable
+     */
+    setReadTimeout(timeout: number) {
+        this.readTimeout = timeout;
+    }
+
 
     /**
      * Read a Buffer from the socket
@@ -184,6 +203,10 @@ export class NetConn extends EventEmitter {
         return new Promise((resolve, reject) => {
             if (nc._err) {
                 reject(nc._err);
+                return;
+            }
+            if (!this.socket || this.socket.destroyed) {
+                reject(new Error("Socket destroyed"));
                 return;
             }
             let isResolved = false;
@@ -241,11 +264,25 @@ export class NetConn extends EventEmitter {
                     reject(err)
                 }
             };
+            const readTimeoutHandler = () => {
+                nc.log("readBuffer readTimeoutHandler");
+                removeListeners();
+                if (!isResolved) {
+                    isResolved = true;
+                    reject(new Error("Read timeout"));
+                }
+            };
+            let readTimeout: NodeJS.Timeout | undefined;
+
             const removeListeners = () => {
                 stream.removeListener("close", closeHandler);
                 stream.removeListener("error", errorHandler);
                 stream.removeListener("end", endHandler);
                 stream.removeListener("readable", readableHandler);
+                if (readTimeout) {
+                    clearTimeout(readTimeout);
+                    readTimeout = undefined;
+                }
             }
 
             nc.log(`readBuffer. wait to readable`);
@@ -253,6 +290,10 @@ export class NetConn extends EventEmitter {
             stream.on("close", closeHandler)
             stream.on("end", endHandler)
             stream.on("error", errorHandler)
+            if (nc.readTimeout) {
+                // nc.log(`readBuffer. set timeout: ${nc.readTimeout}`);
+                readTimeout = setTimeout(readTimeoutHandler, nc.readTimeout);
+            }
 
         });
     }
@@ -285,6 +326,10 @@ export class NetConn extends EventEmitter {
         return new Promise<void>((resolve, reject) => {
             if (nc._err) {
                 reject(nc._err);
+                return;
+            }
+            if (!this.socket || this.socket.destroyed) {
+                reject(new Error("Socket destroyed"));
                 return;
             }
 

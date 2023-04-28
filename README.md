@@ -84,6 +84,16 @@ const  obj = await  conn.readJSON();
 await  conn.writeJSON(obj);
 ``` 
 
+## Timeouts
+`setTimeout` sets a timeout for when the connection is idle. If the socket is idle for the specified time, the connection will be closed.
+`setReadTimeout` sets a timeout for read operations. If a timeout expires before the read operation completes, the read operation is cancelled and an exception is thrown.
+```js
+// Set timeout for when the connection is idle
+conn.setTimeout(10000); // 10 seconds
+// Set timeout for read operations
+conn.setReadTimeout(5000); // 5 seconds
+```
+
 ## TCP Server
 There are two options to implement TCP Server using `NetService` 
 ### Option 1 - Handler function
