@@ -101,7 +101,7 @@ test('Client and Server', async () => {
 
 /**
  * A simple handler function that will be called when a connection is accepted.
- * @param conn 
+ * @param conn
  */
 const handlerFunc = async (conn: NetConn) => {
     try {
@@ -126,8 +126,8 @@ const handlerFunc = async (conn: NetConn) => {
 
 /**
  * Wait for a number of milliseconds
- * @param ms 
- * @returns 
+ * @param ms
+ * @returns
  */
 function wait(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -143,14 +143,14 @@ test('Client and Server with accept', async () => {
         const port = 11481;
         // NetService.DEBUG = true;
         const netService = new NetService(port);
-        await netService.listen();        
+        await netService.listen();
         console.log(`Listening on port ${port}`);
         const options = { port: port, host: 'localhost', servername: 'localhost' }
         let conn: NetConn = await NetConn.connectToHost(options, false);
         console.log(`Connected to ${options.host}:${options.port}`);
         // await wait(1000);
         let serverConn = await netService.accept();
-        console.log(`Accepted connection from ${serverConn.socket.remoteAddress}:${serverConn.socket.remotePort}`);        
+        console.log(`Accepted connection from ${serverConn.socket.remoteAddress}:${serverConn.socket.remotePort}`);
         handlerFunc(serverConn); // start processing - do not await!
         await conn.writeInt(1);
         await conn.writeString('teststring');
@@ -175,9 +175,9 @@ test('Client and Server with accept', async () => {
 
 test('Client and Server with compression', async () => {
     try {
-        const port = 11481;       
+        const port = 11481;
         const netService = new NetService(port);
-        await netService.listen();        
+        await netService.listen();
         console.log(`Listening on port ${port}`);
         const options = { port: port, host: 'localhost', servername: 'localhost' }
         let conn: NetConn = await NetConn.connectToHost(options, false);
@@ -186,7 +186,7 @@ test('Client and Server with compression', async () => {
         // await wait(1000);
         let serverConn = await netService.accept();
         console.log(`Accepted connection from ${serverConn.socket.remoteAddress}:${serverConn.socket.remotePort}`);
-        serverConn.setCompression(true,true); // compress both sides        
+        serverConn.setCompression(true,true); // compress both sides
         handlerFunc(serverConn); // start processing - do not await!
         await conn.writeInt(1);
         await conn.writeString('teststring');
@@ -226,7 +226,7 @@ class TestServerConnTimeout extends NetConn {
             let teststring = await this.readString();
             expect(teststring).toBe('teststring');
             await this.writeInt(2);
-            
+
             //console.log(`TestServerConn: timeout should have occurred. socket.destroyed: ${this.socket.destroyed}`);
             //expect(this.socket.destroyed).toBe(true);
         } catch (err) {
@@ -272,6 +272,36 @@ test('Timeouts', async () => {
             //console.log(`Error: ${err.message}`);
             expect(err.message).toBe('Socket destroyed');
         }
+        await conn.end();
+        netService.close();
+    } catch (err) {
+        console.log(err);
+        throw err;
+    }
+});
+
+test('Unix Socket', async () => {
+    try {
+        const path = '/tmp/test.sock';
+        const netService = new NetService(path, TestServerConn, undefined, undefined);
+        await netService.listen();
+        console.log(`Listening on path ${path}`);
+        const options = { path: path }
+        let conn: NetConn = await NetConn.connectWithOptions(options);
+        console.log(`Connected to ${options.path}`);
+        await conn.writeInt(1);
+        await conn.writeString('teststring');
+        console.log(`Sent data`);
+        let ack = await conn.readInt();
+        console.log(`Ack: ${ack}`);
+        expect(ack).toBe(2);
+        let myObj = await conn.readJSON();
+        // console.log(`Received data: ${JSON.stringify(myObj)}`);
+        expect(myObj).toBeDefined();
+        expect(myObj.a).toBe(1);
+        expect(myObj.b).toBe('test');
+        expect(myObj.c).toBeDefined();
+        expect(myObj.c.length).toBe(3);
         await conn.end();
         netService.close();
     } catch (err) {

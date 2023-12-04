@@ -66,7 +66,7 @@ export class NetConn extends EventEmitter {
         }
         this.socket = socket;
         this.TAG = `${Object.getPrototypeOf(this).constructor.name}_${socket.remoteAddress}:${socket.remotePort}`;
-        this.log = debug(`node-tcp:NetConn:${this.TAG}`);        
+        this.log = debug(`node-tcp:NetConn:${this.TAG}`);
         this.log(`constructor`);
         this.options = options;
         socket.setNoDelay(true);
@@ -104,10 +104,23 @@ export class NetConn extends EventEmitter {
         this.socket.on('timeout', timeoutHandler);
     }
 
+
+
+    /**
+     * Connect to a TCP host or IPC socket and return a NetConn after the connection is established
+     * @param options
+     * @returns
+     */
+    static async connectWithOptions(options: net.NetConnectOpts): Promise<NetConn> {
+        log(`connectWithOptions. options: ${JSON.stringify(options, null, 2)}`);
+        const socket = await NetConn.promiseConnect(options);
+        return new NetConn(socket);
+    }
+
     /**
      * Connect to a host and return a NetConn after the connection is established
-     * @param options 
-     * @param isTLS 
+     * @param options
+     * @param isTLS
      * @returns A NetConn object that wraps the socket
      */
     static async connectToHost(options: net.TcpNetConnectOpts | tls.ConnectionOptions, isTLS: boolean = false): Promise<NetConn> {
@@ -119,7 +132,7 @@ export class NetConn extends EventEmitter {
     /**
      * Connect to a host and return a net.Socket or tls.Socket after the connection is established
      * @param options connect options including host, port, etc.
-     * @param isTLS 
+     * @param isTLSs
      * @returns A net.Socket or tls.Socket object
      */
     static promiseConnect(options: net.TcpNetConnectOpts | tls.ConnectionOptions, isTLS: boolean = false): Promise<net.Socket | tls.TLSSocket> {
@@ -147,19 +160,19 @@ export class NetConn extends EventEmitter {
      * Start to compress data on the socket in one or both directions.
      * If the socket is already compressed, this method does nothing.
      * Compression cannot be disabled once enabled.
-     * @param compressIn 
-     * @param compressOut 
+     * @param compressIn
+     * @param compressOut
      */
-    setCompression(compressIn: boolean, compressOut: boolean) {        
+    setCompression(compressIn: boolean, compressOut: boolean) {
         if (compressIn && this.compressIn === false) {
             if (!this.compressedSocket) {
                 this.compressedSocket = new CompressedSocket(this.socket);
             }
             this.compressIn = true;
-        } 
+        }
         if (compressOut) {
             if (!this.compressedSocket) {
-                this.compressedSocket = new CompressedSocket(this.socket);                
+                this.compressedSocket = new CompressedSocket(this.socket);
             }
             this.compressOut = true;
         }
@@ -311,8 +324,8 @@ export class NetConn extends EventEmitter {
 
     /**
      * Write buffer to socket
-     * @param chunk 
-     * @param doNotCompressChunk 
+     * @param chunk
+     * @param doNotCompressChunk
      * @returns Promise that will be resolved when buffer is written
      */
     writeBuffer(chunk: Buffer, writeUnCompressed: boolean = false): Promise<void> {
@@ -394,7 +407,7 @@ export class NetConn extends EventEmitter {
 
     /**
      * Count output bytes for bandwidth stats
-     * @param bytes 
+     * @param bytes
      */
     addOutBytes(bytes: number) {
         if (this.bwStats) {
@@ -409,7 +422,7 @@ export class NetConn extends EventEmitter {
 
     /**
      * Count input bytes for bandwidth stats
-     * @param bytes 
+     * @param bytes
      */
     addInBytes(bytes: number) {
         if (this.bwStats) {
@@ -446,7 +459,7 @@ export class NetConn extends EventEmitter {
 
     /**
      * Read 8 bit integer (byte)
-     * @returns 
+     * @returns
      */
     async readByte(): Promise<number> {
         const chunk = await this.readBuffer(1);
@@ -566,7 +579,7 @@ export class NetConn extends EventEmitter {
 
     /**
      * Write any object or javascript value as JSON string
-     * @param obj 
+     * @param obj
      */
     async writeJSON(obj: any): Promise<void> {
         const str = JSON.stringify(obj);
@@ -575,7 +588,7 @@ export class NetConn extends EventEmitter {
 
     /**
      * Write 32 bit integer
-     * @param num 
+     * @param num
      */
     async writeInt(num: number): Promise<void> {
         const b = Buffer.alloc(4);
@@ -586,7 +599,7 @@ export class NetConn extends EventEmitter {
 
     /**
      * Write boolean
-     * @param bool 
+     * @param bool
      */
     async writeBoolean(bool: boolean): Promise<void> {
         const b = Buffer.alloc(1);
