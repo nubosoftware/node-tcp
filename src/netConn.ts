@@ -223,6 +223,23 @@ export class NetConn extends EventEmitter {
                 return;
             }
             let isResolved = false;
+            // try to read immediately
+            try {
+                const chunk = stream.read(size);
+                if (chunk) {
+                    const chunkSize = chunk.length;
+                    nc.log(`readBuffer. resolve: ${chunkSize}`);
+                    if (this.bwStats || this.countBWStats) {
+                        this.addInBytes(chunkSize);
+                    }
+                    resolve(chunk);
+                    return;
+                }
+            } catch (err) {
+                nc.log(`readBuffer error: ${err}`);
+                reject(err);
+                return;
+            }
             const readableHandler = () => {
                 nc.log(`readBuffer. readableHandler`);
                 try {
